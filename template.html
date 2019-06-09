@@ -1,0 +1,131 @@
+<html>
+
+<head>
+	<title>DX7 Patch Explorer</title>
+	<style>
+		* {
+			font-family: monospace;
+			font-size: 18px;
+		}
+
+		body {
+			background-color: #333333
+		}
+
+		.bank-box-name {
+			font-size: 14px;
+		}
+
+		.bank-box {
+			width: 200px;
+			height: 50px;
+			padding-top: 25px;
+			margin: 5px;
+			background-color: azure;
+			display: inline-block;
+			text-align: center;
+			font-weight: bold;
+			cursor: pointer;
+			white-space: nowrap;
+		}
+
+		.search-bar {
+			color: wheat;
+		}
+
+		table {
+			background-color: #bbbbbb;
+		}
+
+		#bankSelect {
+			max-height: 80%;
+			overflow-y: scroll;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="search-bar" id="initializing">Initializing... please wait.</div>
+	<div class="search-bar" style="display:none">
+		Select directory
+		<select id="dirSelect" onchange="dirChange()">
+		</select>
+	</div>
+	<div class="search-bar" style="display:none">
+		or search for a patch
+		<input id="patchSearch" /> <button onclick="search()">Search!</button>
+	</div>
+	<div id="result">
+	</div>
+	<div id="bankSelect">
+	</div>
+	<script>
+		const noneOption = '/&%(¤&/('
+		const noneOptionHtml = `<option value="${noneOption}">select...</option>`
+		const file = JSON.parse('@@JSON@@')
+		const patchList = file.sysexList
+		let directoryIdMap = file.directories
+		dirSelect.innerHTML = noneOptionHtml + Object.keys(directoryIdMap).map(x => `<option value="${x}">${x}</option>`)
+
+		const directoryIdToDirMap = {}
+		Object.keys(directoryIdMap).forEach(dir => directoryIdToDirMap[directoryIdMap[dir]] = dir)
+		directoryIdMap = null
+
+		const mem_getField = {}
+		const getField = (x, y) => {
+			if (mem_getField.param === x) {
+				return y(mem_getField.value)
+			}
+			mem_getField.param = x
+			mem_getField.value = x.data.split('/')
+			return y(mem_getField.value)
+		}
+
+		const getBank = x => getField(x, d => d[0])
+		const getNumber = x => getField(x, d => d[1])
+		const getName = x => getField(x, d => d[2])
+
+		const createPatchBox = x => `<div onclick="bankChange(${x.id})" class="bank-box">
+<div class="bank-box-name">${getBank(x)}</div>
+${getNumber(x) + ': ' + getName(x)}</div>`
+
+		function dirChange() {
+			if (dirSelect.value !== noneOption) {
+				bankSelect.innerHTML = patchList.filter(x => directoryIdToDirMap[x.dir] === dirSelect.value)
+					.map(createPatchBox)
+					.join('')
+			} else {
+				bankSelect.innerHTML = ''
+			}
+		}
+
+		const pathSep = '@@pathSep@@' === 'windows' ? '\\' : '/'
+
+		function bankChange(id) {
+			const patch = patchList.find(x => x.id === id)
+			const num = getNumber(patch)
+			const bank = getBank(patch)
+			result.innerHTML = `<table border="2">
+	${`<tr><td>Name</td><td>${getName(patch)}</td></tr>`}
+	${`<tr><td>Directory</td><td>${directoryIdToDirMap[patch.dir]}</td></tr>`}
+	${`<tr><td>Bank</td><td>${bank}</td></tr>`}
+	${`<tr><td>Number</td><td>${num} (Dexed: row ${(num - 1) % 4 + 1}, col ${Math.floor((num - 1) / 4) + 1})</td></tr>`}
+	${`<tr><td>Full path</td><td>@@working-dir@@${pathSep}${directoryIdToDirMap[patch.dir]}${pathSep}${bank}.syx</td></tr>`}
+	</table>`
+		}
+
+		function search() {
+			const str = patchSearch.value.toLocaleUpperCase()
+			const findFromField = field => field.toLocaleUpperCase().indexOf(str) > -1
+			bankSelect.innerHTML = patchList
+				.filter(patch => findFromField(getName(patch)) || findFromField(directoryIdToDirMap[patch.dir]))
+				.map(createPatchBox)
+				.join('')
+		}
+		Array.from(document.querySelectorAll('.search-bar')).forEach(x => x.style.display = 'block')
+		initializing.style.display = 'none'
+
+	</script>
+</body>
+
+</html>
