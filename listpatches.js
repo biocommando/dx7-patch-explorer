@@ -2,20 +2,65 @@ const fs = require('fs')
 const path = require('path')
 console.log('parsing the data...')
 const escapedPathSep = path.sep.replace('\\', '\\\\')
-// At the moment the program just reads the file list from a file that is generated with
-// a system call (such as "dir *.syx /S /B" in windows), could be improved
 const allSysexFiles = fs.readFileSync('allsyx.txt').toString().split(/[\r\n]+?/)
 const sysexList = []
 const directories = {}
+const duplicateCheckMetadata = []
+const duplicateFileCheckMetadata = []
+
+const compareBufferSlices = (buf1, pos1, buf2, pos2) => {
+	for (let i = 0; i < 128; i++) {
+		if (buf1[pos1 + i] !== buf2[pos2 + i]) {
+			return false;
+		}
+	}
+	return true;
+}
+
+const comparePatches = (file1, patchnum1, file2, patchnum2) => {
+	const buf1 = fs.readFileSync(file1)
+	const buf2 = fs.readFileSync(file2)
+	const pos1 = 124 + patchnum1 * 128
+	const pos2 = 124 + patchnum1 * 128
+	return compareBufferSlices(buf1, pos1, buf2, pos2)
+}
+
+const compareBanks = (file1, file2) => {
+	const buf1 = fs.readFileSync(file1)
+	const buf2 = fs.readFileSync(file2)
+	
+	if (buf1.length !== buf2.length) return false
+		
+	for (let i = 0; i < buf1.length; i++) {
+		if (buf1[i] !== buf2[i]) {
+			return false;
+		}
+	}
+	return true;
+}
+
+let duplicateCount = 0, duplicateFileCount = 0
+
 allSysexFiles.forEach((fileName, idx) => {
 	if (idx % 100 === 0) {
 		console.log(`${idx} / ${allSysexFiles.length} processed`)
 	}
 	if (fileName === '' || fs.lstatSync(fileName).isDirectory()) return
+	const bank = fileName.replace(new RegExp('.+' + escapedPathSep), '').replace(/\..+?$/, '')
+	
+	if (duplicateFileCheckMetadata.some(x => x.bank === bank.toLocaleUpperCase())) {
+		if (duplicateFileCheckMetadata.filter(x => x.bank === bank.toLocaleUpperCase()).some(x => compareBanks(fileName, x.fileName))) {
+			duplicateFileCount++
+			return
+		}
+	}
+	duplicateFileCheckMetadata.push({bank: bank.toLocaleUpperCase(), fileName})
+	
 	const buf = fs.readFileSync(fileName)
 	if (buf[3] !== 9) return // Only DX7 supported atm
-	let pos = 124
+	let pos = 124 - 128
 	for (let i = 1; i <= 32; i++) {
+		pos += 128
 		let patchName = ''
 		let chrsum = 0
 		for (let patchNameChr = 0; patchNameChr < 10; patchNameChr++) {
@@ -34,16 +79,26 @@ allSysexFiles.forEach((fileName, idx) => {
 			directories[relativeDir] = idx
 		}
 		patchName = patchName.replace(/[^a-zA-Z0-9.,_ /-]/g, '?').trim()
-		const bank = fileName.replace(new RegExp('.+' + escapedPathSep), '').replace(/\..+?$/, '')
+		// There are many duplicate banks and patches there, so let's just check that no duplicate patches are put to the output
+		const possibleDuplicates = duplicateCheckMetadata.filter(x => x.patchName === patchName)
+		if (possibleDuplicates.length > 0) {
+			const areEqual = possibleDuplicates.some(possibleDuplicate => comparePatches(fileName, i - 1, possibleDuplicate.fileName, possibleDuplicate.patchNum))
+			if (areEqual) {
+				duplicateCount++
+				continue
+			}
+		}
+		duplicateCheckMetadata.push({ patchName, fileName, patchNum: i - 1 })
+		
 		sysexList.push({
 			id: sysexList.length,
 			dir: directories[relativeDir],
 			// This data is accessed seldomly in UI so this is (somewhat) size-optimized
 			data: [bank, i, patchName].join('/')
 		})
-		pos += 128
 	}
 })
+
 
 // The object contains list of patches and a list of all directories mapped to an id.
 // Each patch object contains only an id of the directory instead of the directory as a string.
@@ -65,4 +120,6 @@ const html = fs.readFileSync('template.html')
 		.replace(/\\/g, '\\\\')
 		.replace(/'/g, '\\\''))
 fs.writeFileSync('patch-explorer.html', html)
+if (duplicateFileCount > 0) console.log('Excluded ' + duplicateFileCount + ' duplicate banks')
+if (duplicateCount > 0) console.log('Excluded ' + duplicateCount + ' duplicate patches')
 console.log('done!')
