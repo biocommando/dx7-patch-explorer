@@ -21,7 +21,7 @@ const comparePatches = (file1, patchnum1, file2, patchnum2) => {
 	const buf1 = fs.readFileSync(file1)
 	const buf2 = fs.readFileSync(file2)
 	const pos1 = 124 + patchnum1 * 128
-	const pos2 = 124 + patchnum1 * 128
+	const pos2 = 124 + patchnum2 * 128
 	return compareBufferSlices(buf1, pos1, buf2, pos2)
 }
 
