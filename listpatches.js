@@ -42,9 +42,7 @@ const compareBanks = (file1, file2) => {
 let duplicateCount = 0, duplicateFileCount = 0
 
 allSysexFiles.forEach((fileName, idx) => {
-	if (idx % 100 === 0) {
-		console.log(`${idx} / ${allSysexFiles.length} processed`)
-	}
+	console.log(`${idx} / ${allSysexFiles.length} processed`)
 	if (fileName === '' || fs.lstatSync(fileName).isDirectory()) return
 	const bank = fileName.replace(new RegExp('.+' + escapedPathSep), '').replace(/\..+?$/, '')
 	
